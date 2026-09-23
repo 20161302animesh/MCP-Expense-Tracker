@@ -5,17 +5,6 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "expenses.db")
 
 mcp = FastMCP("ExpenseTracker")
 
-"""
-CREATE TABLE IF NOT EXISTS expenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    amount REAL NOT NULL,
-    category TEXT NOT NULL,
-    subcategory TEXT DEFAULT '',
-    note TEXT DEFAULT ''
-)
-"""
-
 
 def init_db():
     with sqlite3.connect(DB_PATH) as c:
@@ -34,7 +23,7 @@ def init_db():
 init_db()
 
 @mcp.tool()
-def add_expense(date, amount, product, category, subcategory="", note=""):
+def add_expense(date, amount, product, category, subcategory="", note="") -> dict:
     '''Add an expense entry to the database'''
     with sqlite3.connect(DB_PATH) as c:
         cur = c.execute(
