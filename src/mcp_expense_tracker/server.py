@@ -1,4 +1,8 @@
+from datetime import date
+from typing import Annotated
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
+from pydantic import Field, StringConstraints
 import os, sqlite3
 
 # Defaults to expenses.db at the project root (src/mcp_expense_tracker/ -> ../..).
@@ -8,6 +12,12 @@ DB_PATH = os.environ.get(
 )
 
 mcp = FastMCP("ExpenseTracker")
+
+# Dates are stored as ISO text (YYYY-MM-DD) so that string comparison in
+# `summarize` orders them chronologically.
+IsoDate = Annotated[date, Field(description="Date in ISO format, YYYY-MM-DD")]
+Amount = Annotated[float, Field(gt=0, allow_inf_nan=False, description="Amount spent; must be positive")]
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 def init_db():
@@ -27,13 +37,20 @@ def init_db():
 init_db()
 
 @mcp.tool()
-def add_expense(date, amount, product, category, subcategory="", note="") -> dict:
+def add_expense(
+    date: IsoDate,
+    amount: Amount,
+    product: Name,
+    category: Name,
+    subcategory: str = "",
+    note: str = "",
+) -> dict:
     '''Add an expense entry to the database'''
     with sqlite3.connect(DB_PATH) as c:
         cur = c.execute(
-            "INSERT INTO expenses(date, amount, product, category, subcategory, note)" \
+            "INSERT INTO expenses(date, amount, product, category, subcategory, note) "
             "VALUES (?,?,?,?,?,?)",
-            (date, amount, product, category, subcategory, note)
+            (date.isoformat(), amount, product, category, subcategory.strip(), note.strip())
         )
         return {"status": "ok", "id": cur.lastrowid}
 
@@ -46,8 +63,11 @@ def list_expenses() -> list[dict]:
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 @mcp.tool()
-def summarize(start_date, end_date, category=None) -> list[dict]:
+def summarize(start_date: IsoDate, end_date: IsoDate, category: str | None = None) -> list[dict]:
     '''Summarize expenses by category within an inclusive date range.'''
+    if start_date > end_date:
+        raise ToolError(f"start_date ({start_date}) is after end_date ({end_date})")
+
     with sqlite3.connect(DB_PATH) as c:
         query = (
             """
@@ -56,7 +76,7 @@ def summarize(start_date, end_date, category=None) -> list[dict]:
             WHERE date BETWEEN ? AND ?
             """
         )
-        params = [start_date, end_date]
+        params = [start_date.isoformat(), end_date.isoformat()]
 
         if category:
             query += " AND category = ?"
@@ -74,4 +94,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
