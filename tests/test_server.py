@@ -13,6 +13,8 @@ def test_exposes_all_tools():
             return {t.name for t in await client.list_tools()}
     assert asyncio.run(names()) == {
         "add_expense", "list_expenses", "update_expense", "delete_expense", "summarize",
+        "add_transaction", "list_transactions", "update_transaction", "delete_transaction",
+        "get_balance", "record_balance", "list_balance_snapshots", "delete_balance_snapshot",
     }
 
 
