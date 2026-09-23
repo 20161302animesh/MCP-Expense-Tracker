@@ -1,7 +1,7 @@
 [project]
 name = "mcp-expense-tracker"
 version = "0.1.0"
-description = "Add your description here"
+description = "An MCP server for tracking personal expenses in SQLite"
 readme = "README.md"
 authors = [
     { name = "Animesh Das", email = "animesh.das@costrategix.com" }
@@ -18,3 +18,12 @@ mcp-expense-tracker = "mcp_expense_tracker:main"
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+# Only collect from tests/ so the root-level test.py server wrapper is never imported as a test.
+testpaths = ["tests"]

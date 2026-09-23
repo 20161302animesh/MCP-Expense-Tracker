@@ -12,8 +12,9 @@ This project uses `uv` for dependency management (Python >=3.13, pinned via `.py
 
 - Install dependencies: `uv sync`
 - Run the MCP server: `uv run mcp-expense-tracker` (or `uv run test.py`, which is equivalent)
+- Run tests: `uv run pytest` (a single test: `uv run pytest tests/test_server.py::test_add_then_list`)
 
-There are no lint, test, or build tooling configured yet.
+Tests live in `tests/` and call tools through an in-memory `fastmcp.Client`, so argument validation runs; `tests/conftest.py` gives each test its own temporary database via `EXPENSE_TRACKER_DB`/`server.DB_PATH`. `testpaths` is set to `tests` so the root `test.py` wrapper is never collected. No linting is configured yet.
 
 ## Architecture
 
