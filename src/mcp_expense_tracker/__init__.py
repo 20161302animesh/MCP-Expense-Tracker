@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from mcp-expense-tracker!")
+from mcp_expense_tracker.server import main, mcp
+
+__all__ = ["main", "mcp"]
