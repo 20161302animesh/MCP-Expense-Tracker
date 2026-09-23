@@ -52,5 +52,28 @@ def list_expenses() -> list[dict]:
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
+@mcp.tool()
+def summarize(start_date, end_date, category=None) -> list[dict]:
+    '''Summarize expenses by category within an inclusive date range.'''
+    with sqlite3.connect(DB_PATH) as c:
+        query = (
+            """
+            SELECT category, SUM(amount) AS total_amount
+            FROM expenses
+            WHERE date BETWEEN ? AND ?
+            """
+        )
+        params = [start_date, end_date]
+
+        if category:
+            query += " AND category = ?"
+            params.append(category)
+
+        query += " GROUP BY category ORDER BY category ASC"
+
+        cur = c.execute(query, params)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
 if __name__=="__main__":
     mcp.run()
