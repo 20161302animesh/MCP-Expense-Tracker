@@ -1,50 +1,64 @@
 # MCP Expense Tracker
 
-An [MCP](https://modelcontextprotocol.io) server for tracking personal expenses and your account balance, built with [FastMCP](https://gofastmcp.com) and stored in a local SQLite database. Connect it to Claude Desktop (or any MCP client) and add, look up, correct and summarize expenses in plain language.
+An [MCP](https://modelcontextprotocol.io) server for tracking personal expenses, income and the balances of your bank account and cash in hand, built with [FastMCP](https://gofastmcp.com) and stored in a local SQLite database. Connect it to Claude Desktop (or any MCP client) and log, look up, correct and summarize your money in plain language.
+
+## Accounts
+
+There are two accounts:
+
+- **`bank`**: your bank account, including UPI/Google Pay payments drawn from it. This is the default.
+- **`cash`**: cash in hand.
 
 ## Tools
 
-### Expenses
+### Recording and editing entries
 
 | Tool | What it does |
 |---|---|
-| `add_expense` | Add an expense: `date`, `amount`, `product`, `category`, and optional `subcategory` and `note`. Also records a matching debit. Returns the new id. |
-| `list_expenses` | List expenses, optionally filtered by `start_date`, `end_date` (inclusive), `category`, and capped with `limit`. |
-| `update_expense` | Change any fields of an expense by `expense_id`; fields you don't pass are left alone. Its debit is updated to match. Returns the updated expense. |
-| `delete_expense` | Delete an expense (and its debit) by `expense_id`. Returns what was deleted. |
-| `summarize` | Total spending per category between `start_date` and `end_date` (inclusive), optionally for one `category`. |
+| `add_expense` | Record money spent: `date`, `amount`, `product`, `category`, optional `account` (default `bank`), `subcategory` and `note`. P2P payments to other people are expenses too. |
+| `add_income` | Record money received (salary, refunds, P2P payments to you): `date`, `amount`, `description`, `category`, optional `account` and `note`. |
+| `transfer` | Move money between your own accounts: `date`, `amount`, `from_account`, `to_account`, optional `description` and `note`. Use it for ATM withdrawals (`bank` → `cash`) and cash deposits (`cash` → `bank`). |
+| `list_entries` | List entries by date, optionally filtered by `start_date`, `end_date` (inclusive), `kind` (`debit`, `credit`, `transfer`), `account`, `category`, and capped with `limit`. |
+| `update_entry` | Change any fields of an entry by `entry_id`; fields you don't pass are left alone. |
+| `delete_entry` | Delete an entry by `entry_id`. Returns what was deleted. |
+| `summarize` | Total spending per category between `start_date` and `end_date` (inclusive), optionally for one `category` or `account`. Pass `kind="credit"` to total income instead. |
 
-### Balance
-
-The tracker keeps a single account balance (e.g. a bank account that UPI payments also draw from).
+### Balances
 
 | Tool | What it does |
 |---|---|
-| `add_transaction` | Record a `credit` (salary, refund) or a non-expense `debit` (transfer, ATM withdrawal): `date`, `kind`, `amount`, `description`, optional `note`. |
-| `list_transactions` | List credits and debits, optionally filtered by `start_date`, `end_date`, `kind`, and capped with `limit`. Expense debits show their `expense_id`. |
-| `update_transaction` | Change fields of a manually added transaction by `transaction_id`. |
-| `delete_transaction` | Delete a manually added transaction by `transaction_id`. |
-| `record_balance` | Record the actual balance at the end of a `date` (e.g. from your bank app). Returns the balance the tracker expected and the difference. |
-| `get_balance` | Balance at the end of `as_of` (default today): the latest snapshot on or before that date, plus credits and minus debits after it. |
-| `list_balance_snapshots` | List recorded balances, optionally within a date range. |
-| `delete_balance_snapshot` | Delete the snapshot for a `date`. |
+| `record_balance` | Record the actual balance of an `account` at the end of a `date` (from the bank app, or cash counted in hand). Returns the balance the tracker expected and the difference. |
+| `get_balance` | Balances at the end of `as_of` (default today) for each account, plus the total. Pass `account` for just one. |
+| `list_balance_snapshots` | List recorded balances, optionally for one `account` and within a date range. |
+| `delete_balance_snapshot` | Delete the snapshot for an `account` on a `date`. |
 
-How the balance works:
+## How it works
 
-- Every expense automatically creates a linked debit. Change or remove those through the expense tools; `update_transaction` and `delete_transaction` refuse to touch them.
-- A snapshot is the real balance at the end of its date, so transactions on or before that date are already included in it. Only later transactions are added or subtracted.
-- There's at most one snapshot per date; recording another for the same date replaces it.
-- Before your first snapshot, `get_balance` is just credits minus debits starting from 0. Record a snapshot to anchor it to your real balance.
+Every entry is one row in a single ledger, with a `kind`:
+
+| Kind | Meaning | Effect on balances | Counts as spending? |
+|---|---|---|---|
+| `debit` | An expense | Takes money out of its account | Yes |
+| `credit` | Income | Adds money to its account | No (it's income) |
+| `transfer` | Money moved between your own accounts | Out of `account`, into `to_account`; the total is unchanged | No |
+
+Treating an ATM withdrawal as a transfer means every rupee is counted once. The withdrawal moves money from `bank` to `cash`, and what you later buy with that cash is recorded as a `cash` expense.
+
+For each account, the balance is its latest recorded snapshot, plus money in and minus money out after that snapshot's date:
+
+- A snapshot is the real balance at the end of its date, so entries on or before that date are already included in it.
+- There's at most one snapshot per account per date. Recording another for the same account and date replaces it.
+- Before an account's first snapshot, its balance starts from 0. Record a snapshot to anchor it to reality.
 - When you record a snapshot, a non-zero `difference` means money moved that wasn't logged: negative for untracked spending, positive for untracked income.
 
-### Validation
+## Validation
 
 Inputs are validated before anything is written:
 
 - Dates must be real calendar dates in ISO format, `YYYY-MM-DD`.
 - Amounts must be positive numbers. Recorded balances can be negative (for an overdraft) but must be finite.
-- `product`, `category` and `description` can't be blank. Surrounding whitespace is trimmed from all text fields.
-- `kind` must be `credit` or `debit`.
+- `account` must be `bank` or `cash`, and a transfer's two accounts must differ.
+- `product`, `description` and `category` can't be blank; transfers have no category. Surrounding whitespace is trimmed from all text fields.
 - Date ranges must not end before they start.
 
 ## Setup
@@ -82,7 +96,12 @@ Claude Desktop only picks up code changes after a full restart, which relaunches
 
 ## Data
 
-Data is stored in `expenses.db` at the project root (git-ignored), in three tables: `expenses`, `transactions` and `balance_snapshots`. Tables are created automatically on startup, and any expense without a debit (such as ones recorded before balance tracking existed) gets one backfilled. To use a different file, set the `EXPENSE_TRACKER_DB` environment variable to its path.
+Data is stored in `expenses.db` at the project root (git-ignored), in two tables:
+
+- **`ledger`**: every expense, income and transfer.
+- **`balance_snapshots`**: the actual balances you record, per account and date.
+
+Tables are created automatically on startup. Databases from earlier versions, which had separate `expenses` and `transactions` tables, are migrated in a single transaction. Expense ids are kept, and older entries are assigned to `bank`. To use a different file, set the `EXPENSE_TRACKER_DB` environment variable to its path.
 
 ## Tests
 
