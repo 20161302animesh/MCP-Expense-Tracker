@@ -54,19 +54,98 @@ def add_expense(
         )
         return {"status": "ok", "id": cur.lastrowid}
 
+COLUMNS = "id, date, amount, product, category, subcategory, note"
+
+
+def _check_range(start_date: date | None, end_date: date | None) -> None:
+    if start_date and end_date and start_date > end_date:
+        raise ToolError(f"start_date ({start_date}) is after end_date ({end_date})")
+
+
+def _get_expense(c: sqlite3.Connection, expense_id: int) -> dict:
+    cur = c.execute(f"SELECT {COLUMNS} FROM expenses WHERE id = ?", (expense_id,))
+    row = cur.fetchone()
+    if row is None:
+        raise ToolError(f"No expense with id {expense_id}")
+    cols = [d[0] for d in cur.description]
+    return dict(zip(cols, row))
+
+
 @mcp.tool()
-def list_expenses() -> list[dict]:
-    '''List all expenses from the database'''
+def list_expenses(
+    start_date: IsoDate | None = None,
+    end_date: IsoDate | None = None,
+    category: str | None = None,
+    limit: Annotated[int, Field(ge=1)] | None = None,
+) -> list[dict]:
+    '''List expenses, optionally filtered by an inclusive date range and category.
+    Results are ordered by id; limit caps how many are returned.'''
+    _check_range(start_date, end_date)
+
+    query = f"SELECT {COLUMNS} FROM expenses WHERE 1=1"
+    params: list = []
+    if start_date:
+        query += " AND date >= ?"
+        params.append(start_date.isoformat())
+    if end_date:
+        query += " AND date <= ?"
+        params.append(end_date.isoformat())
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    query += " ORDER BY id ASC"
+    if limit:
+        query += " LIMIT ?"
+        params.append(limit)
+
     with sqlite3.connect(DB_PATH) as c:
-        cur = c.execute("SELECT id, date, amount, product, category, subcategory, note FROM expenses ORDER BY id ASC")
+        cur = c.execute(query, params)
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 @mcp.tool()
+def update_expense(
+    expense_id: int,
+    date: IsoDate | None = None,
+    amount: Amount | None = None,
+    product: Name | None = None,
+    category: Name | None = None,
+    subcategory: str | None = None,
+    note: str | None = None,
+) -> dict:
+    '''Update fields of an existing expense. Only the fields you pass are changed.
+    Returns the updated expense.'''
+    changes = {
+        "date": date.isoformat() if date else None,
+        "amount": amount,
+        "product": product,
+        "category": category,
+        "subcategory": subcategory.strip() if subcategory is not None else None,
+        "note": note.strip() if note is not None else None,
+    }
+    changes = {k: v for k, v in changes.items() if v is not None}
+    if not changes:
+        raise ToolError("No fields to update were provided")
+
+    with sqlite3.connect(DB_PATH) as c:
+        _get_expense(c, expense_id)
+        # Column names come from the fixed dict above, never from user input.
+        assignments = ", ".join(f"{k} = ?" for k in changes)
+        c.execute(f"UPDATE expenses SET {assignments} WHERE id = ?", [*changes.values(), expense_id])
+        return _get_expense(c, expense_id)
+
+@mcp.tool()
+def delete_expense(expense_id: int) -> dict:
+    '''Delete an expense by id. Returns the deleted expense.'''
+    with sqlite3.connect(DB_PATH) as c:
+        expense = _get_expense(c, expense_id)
+        c.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+        return {"status": "deleted", "expense": expense}
+
+@mcp.tool()
 def summarize(start_date: IsoDate, end_date: IsoDate, category: str | None = None) -> list[dict]:
     '''Summarize expenses by category within an inclusive date range.'''
-    if start_date > end_date:
-        raise ToolError(f"start_date ({start_date}) is after end_date ({end_date})")
+    _check_range(start_date, end_date)
 
     with sqlite3.connect(DB_PATH) as c:
         query = (

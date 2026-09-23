@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-An MCP (Model Context Protocol) expense tracker built with `fastmcp` and backed by SQLite. The server lives in `src/mcp_expense_tracker/server.py` and exposes three tools: `add_expense`, `list_expenses` and `summarize`. The root-level `test.py` is not a test file: it is a thin wrapper that imports and runs the package server, kept because existing client configs (e.g. Claude Desktop) launch the server with `uv run test.py`.
+An MCP (Model Context Protocol) expense tracker built with `fastmcp` and backed by SQLite. The server lives in `src/mcp_expense_tracker/server.py` and exposes five tools: `add_expense`, `list_expenses` (optional date-range, category and limit filters), `update_expense`, `delete_expense` and `summarize`. Dates are validated ISO `YYYY-MM-DD` and amounts must be positive. The root-level `test.py` is not a test file: it is a thin wrapper that imports and runs the package server, kept because existing client configs (e.g. Claude Desktop) launch the server with `uv run test.py`.
 
 ## Commands
 
